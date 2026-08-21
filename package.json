@@ -1,0 +1,36 @@
+{
+  "name": "itinerary",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:setup": "node scripts/setup-db.mjs",
+    "db:seed": "node scripts/seed.mjs",
+    "demo:booking": "node scripts/demo-booking.mjs",
+    "test:extract": "node --experimental-strip-types scripts/test-extract.ts"
+  },
+  "dependencies": {
+    "@types/mailparser": "^3.4.6",
+    "imapflow": "^1.7.1",
+    "mailparser": "^3.9.8",
+    "next": "^16.3.2",
+    "pdfjs-dist": "^6.2.108",
+    "pg": "^8.13.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "playwright": "^1.62.1",
+    "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "fsevents@2.3.2": true,
+    "sharp@0.34.5": true
+  }
+}
