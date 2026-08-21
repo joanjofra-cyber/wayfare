@@ -122,7 +122,12 @@ export function itemSubtitle(item: {
 }
 
 export function inboxAddress(inboxToken: string): string {
-  const user = process.env.GMAIL_USER ?? "tour.repot@gmail.com";
+  // `??` only substitutes when the variable is absent. An environment variable
+  // that exists but is empty — easy to create by accident in a hosting
+  // dashboard — sails straight through it and produces "+token@undefined".
+  // Hence the trim, and hence checking the address actually looks like one.
+  const configured = (process.env.GMAIL_USER ?? "").trim();
+  const user = configured.includes("@") ? configured : "tour.repot@gmail.com";
   const [local, domain] = user.split("@");
   return `${local}+${inboxToken}@${domain}`;
 }
