@@ -125,8 +125,49 @@ Also write "summary": 2-3 sentences telling the group how this itinerary has
 been shaped around them, naming the specific accommodations made. Plain, warm,
 no marketing language.
 
-Reply with JSON only, no prose around it:
-{"summary":"...","suggestions":[{"title":"","why":"","kind":"activity|meal","location_name":"","walking_minutes":0,"min_age":0,"best_time":"HH:MM","cost_estimate":0,"accessibility_note":"","tags":[]}]}`;
+Use the propose_activities tool to reply.`;
+
+  // Asking for "JSON only" and parsing the reply is asking for trouble: the
+  // model wraps it in a code fence, or writes a sentence first, or — as
+  // happened here — runs out of room mid-array and produces JSON that cannot
+  // be parsed at all. Declaring a tool makes the shape part of the request, so
+  // what comes back is already an object.
+  const tool = {
+    name: "propose_activities",
+    description: "Return suggested activities for this group, plus a summary of how the trip fits them.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        summary: {
+          type: "string",
+          description: "2-3 sentences on how the itinerary has been shaped around these people.",
+        },
+        suggestions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              why: { type: "string", description: "One sentence, naming this group's actual needs or interests." },
+              kind: { type: "string", enum: ["activity", "meal"] },
+              location_name: { type: "string" },
+              walking_minutes: { type: "integer", description: "Honest estimate of walking involved." },
+              min_age: { type: "integer", description: "Omit if there is no age restriction." },
+              best_time: { type: "string", description: "HH:MM, 24-hour." },
+              cost_estimate: { type: "number", description: "Per person, approximate." },
+              accessibility_note: {
+                type: "string",
+                description: "What you believe about step-free access, seating and toilets. Say 'unknown' where unsure.",
+              },
+              tags: { type: "array", items: { type: "string" } },
+            },
+            required: ["title", "why", "kind"],
+          },
+        },
+      },
+      required: ["summary", "suggestions"],
+    },
+  };
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -142,7 +183,10 @@ Reply with JSON only, no prose around it:
         // noticeably better. Set ANTHROPIC_MODEL to claude-haiku-4-5-20251001
         // if you would rather have speed.
         model: process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-5",
-        max_tokens: 2000,
+        // Generous, so a long answer is never truncated mid-structure.
+        max_tokens: 4000,
+        tools: [tool],
+        tool_choice: { type: "tool", name: tool.name },
         messages: [{ role: "user", content: prompt }],
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -153,17 +197,34 @@ Reply with JSON only, no prose around it:
       return { ok: false, reason: `${response.status}: ${body.slice(0, 200)}` };
     }
 
-    const data = (await response.json()) as { content?: { type: string; text?: string }[] };
-    const text = data.content?.find((block) => block.type === "text")?.text ?? "";
+    const data = (await response.json()) as {
+      stop_reason?: string;
+      content?: { type: string; text?: string; name?: string; input?: unknown }[];
+    };
 
-    // Models sometimes wrap JSON in a code fence however firmly you ask.
-    const json = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    const start = json.indexOf("{");
-    const end = json.lastIndexOf("}");
-    if (start < 0 || end < start) return { ok: false, reason: "unparseable" };
+    const call = data.content?.find((block) => block.type === "tool_use");
+    let parsed = call?.input as Advice | undefined;
 
-    const parsed = JSON.parse(json.slice(start, end + 1)) as Advice;
-    if (!Array.isArray(parsed.suggestions)) return { ok: false, reason: "unparseable" };
+    // Fallback for the rare case where the model answers in prose anyway.
+    if (!parsed) {
+      const text = data.content?.find((block) => block.type === "text")?.text ?? "";
+      const json = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+      const start = json.indexOf("{");
+      const end = json.lastIndexOf("}");
+      if (start >= 0 && end > start) {
+        try {
+          parsed = JSON.parse(json.slice(start, end + 1)) as Advice;
+        } catch {
+          parsed = undefined;
+        }
+      }
+    }
+
+    if (!parsed || !Array.isArray(parsed.suggestions)) {
+      // `max_tokens` means the answer was cut off rather than malformed, and
+      // that is worth saying differently — one is our fault, one is not.
+      return { ok: false, reason: data.stop_reason === "max_tokens" ? "truncated" : "unparseable" };
+    }
 
     return {
       ok: true,

@@ -98,6 +98,8 @@ export default async function SuggestPage({
                 ? "The model took more than 45 seconds, which usually means it is having a bad moment rather than anything being wrong here. Try again."
                 : result.reason === "unparseable"
                   ? "The reply came back in a shape we couldn't read. Try again."
+                  : result.reason === "truncated"
+                    ? "The answer was cut off before it finished. Try again — and if it keeps happening, raise max_tokens in advisor.ts."
                   : `Couldn't get suggestions. ${result.reason}`}
           </span>
         </div>

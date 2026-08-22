@@ -42,25 +42,25 @@ process.env.ANTHROPIC_API_KEY = "test-key";
 let capturedPrompt = "";
 const realFetch = globalThis.fetch;
 
+let capturedBody: Record<string, unknown> = {};
+
+const advice = {
+  summary: "We kept walking short for Grandad.",
+  suggestions: [{
+    title: "Galleria Borghese", why: "Marta likes museums and it is a short walk.",
+    kind: "activity", location_name: "Piazzale Scipione Borghese 5",
+    walking_minutes: 8, best_time: "16:00", cost_estimate: 15,
+    accessibility_note: "Step-free entrance; lift to upper floor.",
+    tags: ["museum", "art"],
+  }],
+};
+
 globalThis.fetch = (async (_url: string, init: RequestInit) => {
-  capturedPrompt = JSON.parse(String(init.body)).messages[0].content;
+  capturedBody = JSON.parse(String(init.body));
+  capturedPrompt = (capturedBody.messages as { content: string }[])[0].content;
+  // The real shape: a tool_use block whose input is already an object.
   return new Response(
-    JSON.stringify({
-      content: [{
-        type: "text",
-        // Deliberately fenced, which is what models actually do.
-        text: "```json\n" + JSON.stringify({
-          summary: "We kept walking short for Grandad.",
-          suggestions: [{
-            title: "Galleria Borghese", why: "Marta likes museums and it is a short walk.",
-            kind: "activity", location_name: "Piazzale Scipione Borghese 5",
-            walking_minutes: 8, best_time: "16:00", cost_estimate: 15,
-            accessibility_note: "Step-free entrance; lift to upper floor.",
-            tags: ["museum", "art"],
-          }],
-        }) + "\n```",
-      }],
-    }),
+    JSON.stringify({ stop_reason: "tool_use", content: [{ type: "tool_use", name: "propose_activities", input: advice }] }),
     { status: 200, headers: { "content-type": "application/json" } }
   );
 }) as typeof fetch;
@@ -74,7 +74,8 @@ check("Grandad's walking limit reaches the prompt", capturedPrompt.includes("Lim
 check("Marta's coeliac requirement reaches the prompt", capturedPrompt.includes("Coeliac / gluten-free"));
 check("Marta's interest reaches the prompt", capturedPrompt.includes("enjoys: museum"));
 check("Leo's age reaches the prompt", capturedPrompt.includes("Leo — 9 years old"));
-check("a fenced JSON reply parses", result.ok, result.ok ? "" : result.reason);
+check("a tool_use reply is read directly", result.ok, result.ok ? "" : result.reason);
+check("the request forces the tool", (capturedBody.tool_choice as { name?: string })?.name === "propose_activities");
 
 if (result.ok) {
   check("the summary survives", result.advice.summary.includes("Grandad"));
@@ -92,6 +93,18 @@ if (result.ok) {
   );
 }
 
+// ---- prose instead of a tool call: fall back rather than fail -------------
+globalThis.fetch = (async () =>
+  new Response(
+    JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: "```json\n" + JSON.stringify(advice) + "\n```" }] }),
+    { status: 200 }
+  )) as typeof fetch;
+const prose = await getAdvice({
+  destination: "Rome", startDate: null, endDate: null, currency: "EUR",
+  travellers, requirements, existing: [],
+});
+check("a fenced JSON reply still works as a fallback", prose.ok, prose.ok ? "" : prose.reason);
+
 // ---- a broken reply must be reported, not crash ---------------------------
 globalThis.fetch = (async () =>
   new Response(JSON.stringify({ content: [{ type: "text", text: "sorry, no." }] }), { status: 200 })) as typeof fetch;
@@ -100,6 +113,18 @@ const broken = await getAdvice({
   travellers, requirements, existing: [],
 });
 check("an unparseable reply is reported", !broken.ok && broken.reason === "unparseable");
+
+// ---- a truncated reply is reported as such, not as malformed --------------
+globalThis.fetch = (async () =>
+  new Response(
+    JSON.stringify({ stop_reason: "max_tokens", content: [{ type: "text", text: '{"summary":"half a' }] }),
+    { status: 200 }
+  )) as typeof fetch;
+const cut = await getAdvice({
+  destination: "Rome", startDate: null, endDate: null, currency: "EUR",
+  travellers, requirements, existing: [],
+});
+check("a truncated reply is distinguished from a malformed one", !cut.ok && cut.reason === "truncated", cut.ok ? "" : cut.reason);
 
 globalThis.fetch = realFetch;
 console.log(failures === 0 ? "\nAll advisor checks passed." : `\n${failures} failed.`);
