@@ -32,10 +32,10 @@ export default async function DocumentsPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mail?: string }>;
+  searchParams: Promise<{ mail?: string; why?: string; upload?: string }>;
 }) {
   const { id } = await params;
-  const { mail } = await searchParams;
+  const { mail, why, upload } = await searchParams;
   const project = await getProject(id);
   if (!project) notFound();
   if (!(await canEdit(project))) redirect(`/trips/${id}`);
@@ -83,7 +83,18 @@ export default async function DocumentsPage({
         {mail === "error" && (
           <div className="finding finding-conflict" style={{ marginTop: "1rem" }}>
             <span className="dot dot-conflict" />
-            <span>Couldn&apos;t reach the mailbox. Check the app password.</span>
+            <span>
+              Couldn&apos;t read the mailbox.
+              {why ? (
+                <>
+                  {" "}
+                  <code style={{ fontFamily: "var(--mono)", fontSize: "0.85em" }}>{why}</code>
+                </>
+              ) : null}
+              <br />
+              Most often: IMAP is switched off in Gmail&apos;s settings, or the app
+              password was pasted with spaces in it.
+            </span>
           </div>
         )}
         {mail && /^\d+$/.test(mail) && (
@@ -101,10 +112,44 @@ export default async function DocumentsPage({
       <form action={uploadDocument} className="card" style={{ marginBottom: "1.5rem" }}>
         <input type="hidden" name="project_id" value={id} />
         <label htmlFor="file">Or add a file yourself</label>
-        <input id="file" name="file" type="file" style={{ marginBottom: "0.75rem" }} />
+        <input id="file" name="file" type="file" required style={{ marginBottom: "0.75rem" }} />
         <button className="btn" type="submit">
           Upload
         </button>
+        <p className="field-hint">PDF, image or text, up to 4 MB.</p>
+
+        {upload === "ok" && (
+          <div className="finding finding-match" style={{ marginTop: "1rem" }}>
+            <span className="dot dot-match" />
+            <span>Added.</span>
+          </div>
+        )}
+        {upload === "nofile" && (
+          <div className="finding finding-unverified" style={{ marginTop: "1rem" }}>
+            <span className="dot dot-unverified" />
+            <span>No file was chosen — pick one first, then press Upload.</span>
+          </div>
+        )}
+        {upload === "toolarge" && (
+          <div className="finding finding-conflict" style={{ marginTop: "1rem" }}>
+            <span className="dot dot-conflict" />
+            <span>That file is over 4 MB, which the server won&apos;t accept. Try a smaller one.</span>
+          </div>
+        )}
+        {upload === "error" && (
+          <div className="finding finding-conflict" style={{ marginTop: "1rem" }}>
+            <span className="dot dot-conflict" />
+            <span>
+              The file didn&apos;t save.
+              {why ? (
+                <>
+                  {" "}
+                  <code style={{ fontFamily: "var(--mono)", fontSize: "0.85em" }}>{why}</code>
+                </>
+              ) : null}
+            </span>
+          </div>
+        )}
       </form>
 
       <h2 style={{ marginBottom: "0.75rem" }}>Documents</h2>

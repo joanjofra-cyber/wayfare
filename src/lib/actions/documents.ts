@@ -12,23 +12,46 @@ async function loadProject(id: string): Promise<Project> {
   return project;
 }
 
+/**
+ * Hosting platforms cap the size of a request body — on Vercel it is 4.5 MB,
+ * and no configuration raises it. Anything larger has to be refused clearly
+ * rather than allowed to fail somewhere in the plumbing.
+ */
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 export async function uploadDocument(formData: FormData) {
   const projectId = String(formData.get("project_id"));
   const project = await loadProject(projectId);
-  if (!(await canEdit(project))) return;
+  if (!(await canEdit(project))) redirect(`/trips/${projectId}/documents?upload=denied`);
 
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return;
+  if (!(file instanceof File) || file.size === 0) {
+    // A silent `return` here was the original sin: the page reloaded, nothing
+    // appeared, and there was no way to tell whether the file was empty, too
+    // large, or the save had failed.
+    redirect(`/trips/${projectId}/documents?upload=nofile`);
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    redirect(`/trips/${projectId}/documents?upload=toolarge`);
+  }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await query(
-    `INSERT INTO documents (project_id, filename, mime_type, size_bytes, content, source)
-     VALUES ($1,$2,$3,$4,$5,'upload')`,
-    [projectId, file.name, file.type || "application/octet-stream", buffer.length, buffer]
-  );
+  let failure: string | null = null;
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await query(
+      `INSERT INTO documents (project_id, filename, mime_type, size_bytes, content, source)
+       VALUES ($1,$2,$3,$4,$5,'upload')`,
+      [projectId, file.name, file.type || "application/octet-stream", buffer.length, buffer]
+    );
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
+  }
 
   revalidatePath(`/trips/${projectId}/documents`);
-  redirect(`/trips/${projectId}/documents`);
+  if (failure) {
+    redirect(`/trips/${projectId}/documents?upload=error&why=${encodeURIComponent(failure.slice(0, 200))}`);
+  }
+  redirect(`/trips/${projectId}/documents?upload=ok`);
 }
 
 export async function attachDocument(formData: FormData) {
@@ -90,6 +113,8 @@ export async function checkMail(formData: FormData) {
   });
 
   let saved = 0;
+  let failure: string | null = null;
+
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
@@ -97,10 +122,15 @@ export async function checkMail(formData: FormData) {
       // Every trip shares one mailbox through plus-addressing, so the To:
       // header is what says which trip a message belongs to.
       const marker = `+${project.inbox_token}@`;
-      const messages = client.fetch(
-        { seen: false },
-        { uid: true, envelope: true, source: true }
-      );
+
+      // Look at everything from the last fortnight rather than only unread
+      // mail. Keying off the unread flag meant that anyone glancing at the
+      // mailbox in Gmail marked the message read and it was never ingested —
+      // and the failure was invisible, because the app simply reported that
+      // there was nothing new. The ingested_emails table is what prevents
+      // duplicates; the read flag was never the right tool for that job.
+      const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      const messages = client.fetch({ since }, { uid: true, envelope: true, source: true });
 
       for await (const message of messages) {
         const parsed = await simpleParser(message.source as Buffer);
@@ -162,10 +192,15 @@ export async function checkMail(formData: FormData) {
       lock.release();
     }
     await client.logout();
-  } catch {
-    redirect(`/trips/${projectId}/documents?mail=error`);
+  } catch (error) {
+    // Say what actually went wrong. "Couldn't reach the mailbox" sends people
+    // hunting through the wrong settings; "Invalid credentials" does not.
+    failure = error instanceof Error ? error.message : String(error);
   }
 
   revalidatePath(`/trips/${projectId}/documents`);
+  if (failure) {
+    redirect(`/trips/${projectId}/documents?mail=error&why=${encodeURIComponent(failure.slice(0, 200))}`);
+  }
   redirect(`/trips/${projectId}/documents?mail=${saved}`);
 }
