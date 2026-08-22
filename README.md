@@ -116,6 +116,32 @@ ones.
 A scanned or photographed ticket has no text layer. The review screen says so
 plainly and you fill the form in by hand, with the file still attached.
 
+## Suggestions for the group
+
+The **Ideas for your group** button on the itinerary asks a language model what
+this particular group could do at the destination — passing it the mandatory
+requirements, the ages and the interests, not just the city name. It also
+returns a short summary of how the trip has been shaped around the people on it.
+
+Set `ANTHROPIC_API_KEY` (from console.anthropic.com) to switch it on. Without a
+key the feature says so and nothing else changes.
+
+Two rules the code enforces, and they are the point:
+
+**A suggestion is a draft, never a saved item.** It opens the same
+confirm-before-save form as a forwarded booking.
+
+**Access claims are opinions, not facts.** Whatever the model says about
+step-free entrances or seating is shown as its note and left *unverified* — the
+attribute stays unknown, so the requirement engine reports it as unconfirmed
+until a human checks. An estimate wearing the clothes of a fact is worse than no
+estimate at all, and `npm run test:advisor` asserts that no accessibility
+attribute is ever asserted from a guess.
+
+The default model is Haiku, because a free Vercel function is killed after ten
+seconds and a larger model routinely misses that window. `ANTHROPIC_MODEL`
+overrides it if you have a longer timeout.
+
 ## Deploying to Vercel
 
 ```bash
