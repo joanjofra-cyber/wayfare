@@ -16,8 +16,8 @@
   "dependencies": {
     "@types/mailparser": "^3.4.6",
     "imapflow": "^1.7.1",
-    "mailparser": "^3.9.15",
-    "next": "15.5.4",
+    "mailparser": "^3.9.8",
+    "next": "^16.3.2",
     "pdfjs-dist": "^6.2.108",
     "pg": "^8.13.1",
     "react": "19.1.0",
@@ -31,5 +31,11 @@
     "playwright": "^1.62.1",
     "tsx": "^4.23.12",
     "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.2": true,
+    "fsevents@2.3.3": true,
+    "sharp@0.34.5": true
   }
 }
