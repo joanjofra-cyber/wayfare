@@ -14,6 +14,10 @@ import ItemForm from "@/components/ItemForm";
 import TopBar from "@/components/TopBar";
 import TripNav from "@/components/TripNav";
 
+/** Asking a model takes longer than rendering a page. Fluid compute allows up
+ *  to 300s even on the free plan; 60 is far more than this needs. */
+export const maxDuration = 60;
+
 export default async function SuggestPage({
   params,
   searchParams,
@@ -91,7 +95,7 @@ export default async function SuggestPage({
             {result.reason === "no_key"
               ? "Suggestions aren't switched on — ANTHROPIC_API_KEY isn't set."
               : result.reason === "timeout"
-                ? "That took too long and the server gave up. Try again — it usually works on the second go."
+                ? "The model took more than 45 seconds, which usually means it is having a bad moment rather than anything being wrong here. Try again."
                 : result.reason === "unparseable"
                   ? "The reply came back in a shape we couldn't read. Try again."
                   : `Couldn't get suggestions. ${result.reason}`}

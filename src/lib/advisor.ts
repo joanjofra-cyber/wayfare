@@ -43,8 +43,18 @@ export type AdviceResult =
   | { ok: true; advice: Advice }
   | { ok: false; reason: string };
 
-/** Free Vercel functions are killed at 10 seconds, so leave room to respond. */
-const TIMEOUT_MS = 8500;
+/**
+ * How long to wait for the model.
+ *
+ * This was originally 8.5 seconds, chosen against Vercel's old 10-second cap
+ * on free functions. With Fluid compute — the default for new projects — the
+ * Hobby limit is 300 seconds, so the tight budget was solving a problem that
+ * no longer exists, and it was cutting off perfectly good answers.
+ *
+ * 45 seconds is generous for this call and still fails fast enough that
+ * somebody standing in front of an audience is not left staring at a spinner.
+ */
+const TIMEOUT_MS = 45_000;
 
 function describeGroup(travellers: Traveller[], requirements: Requirement[]): string {
   const lines: string[] = [];
@@ -127,10 +137,12 @@ Reply with JSON only, no prose around it:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        // Haiku by default: the free Vercel tier kills a function at ten
-        // seconds, and a slower model would routinely miss that window.
-        model: process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5-20251001",
-        max_tokens: 1400,
+        // Sonnet by default. The suggestions are the whole point of this
+        // feature, and a better model reasons about the group's constraints
+        // noticeably better. Set ANTHROPIC_MODEL to claude-haiku-4-5-20251001
+        // if you would rather have speed.
+        model: process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-5",
+        max_tokens: 2000,
         messages: [{ role: "user", content: prompt }],
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
