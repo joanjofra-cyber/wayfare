@@ -66,7 +66,10 @@ export async function updateTripSettings(formData: FormData) {
   );
 
   revalidatePath(`/trips/${id}`);
-  redirect(`/trips/${id}/settings?saved=1`);
+  // The same form appears on the itinerary screen and in settings, so it has
+  // to come back to wherever it was used.
+  const returnTo = String(formData.get("return_to") ?? "");
+  redirect(returnTo === "itinerary" ? `/trips/${id}` : `/trips/${id}/settings?saved=1`);
 }
 
 export async function regenerateShareLink(formData: FormData) {

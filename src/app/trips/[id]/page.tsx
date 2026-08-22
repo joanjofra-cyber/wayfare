@@ -14,6 +14,7 @@ import {
 import { canEdit, canView, currentOwner } from "@/lib/session";
 import { FindingList, HealthPanel } from "@/components/Findings";
 import TopBar from "@/components/TopBar";
+import TripBasics from "@/components/TripBasics";
 import TripNav from "@/components/TripNav";
 
 const KIND_LABEL: Record<string, string> = {
@@ -71,6 +72,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         </div>
       ) : (
         <>
+          <TripBasics project={project} />
           <HealthPanel {...stats} />
 
           <div className="row" style={{ margin: "1.5rem 0 0.5rem" }}>
